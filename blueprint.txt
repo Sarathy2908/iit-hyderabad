@@ -1,0 +1,568 @@
+
+
+INTELLI-CREDIT
+AI-Powered Corporate Credit Appraisal Engine
+Hackathon Blueprint: Architecture, Modules & ML Design
+Stack: Vue 3 + Firebase + Custom ML Models
+No External AI APIs — All Models Built In-House
+
+
+
+1. Project Overview
+Intelli-Credit is a full-stack AI credit decisioning system designed for the Indian corporate lending context. It automates the end-to-end preparation of a Credit Appraisal Memo (CAM) by ingesting multi-format financial data, performing autonomous secondary research, and producing an explainable ML-based lending recommendation — all without relying on any third-party AI API.
+
+CORE GOAL
+Given a mid-sized Indian corporate borrower, produce a structured CAM with a lend/reject recommendation, a proposed credit limit, and a risk-adjusted interest rate — with full reasoning.
+
+1.1 The Problem Being Solved
+	•	Credit managers face a 'Data Paradox': massive data volumes but weeks-long processing times
+	•	Manual process is slow, biased, and misses early warning signals in unstructured text
+	•	Disparate data sources — GST, ITR, bank statements, annual reports, news — are never unified
+	•	India-specific nuances (GSTR-2A vs 3B, CIBIL Commercial, MCA filings) are missed by generic tools
+
+1.2 Hackathon Deliverable Summary
+Pillar
+What to Build
+Priority
+Data Ingestor
+Multi-format parser: PDF, GST XML, bank CSV, structured JSON
+P0
+Research Agent
+Web crawler + qualitative notes portal + score adjuster
+P0
+Recommendation Engine
+ML scoring model + CAM document generator
+P0
+Frontend (Vue 3)
+Unified dashboard for upload, research, review, export
+P1
+Infrastructure
+Firebase hosting, Firestore, Cloud Functions, ML model serving
+P1
+
+
+2. System Architecture
+Everything lives inside a single Firebase project. This prevents CORS issues, keeps auth unified, and simplifies deployment.
+
+2.1 High-Level Architecture
+Layer
+Technology
+Firebase Service
+Frontend UI
+Vue 3 + Vite + Pinia + Tailwind CSS
+Firebase Hosting
+Backend Logic
+Node.js Cloud Functions (Python for ML)
+Cloud Functions (Gen 2)
+Database
+Firestore (NoSQL)
+Firestore
+File Storage
+PDF, CSV, XML uploads
+Cloud Storage
+ML Model Serving
+Flask/FastAPI on Cloud Functions or Cloud Run
+Cloud Run (within project)
+Auth
+Email + Google OAuth
+Firebase Auth
+Realtime Updates
+Firestore listeners
+Firestore
+Scheduled Tasks
+Crawler refresh jobs
+Cloud Scheduler
+
+2.2 Data Flow
+	•	User uploads documents (PDF, CSV, XML) via Vue frontend to Cloud Storage
+	•	Upload triggers a Cloud Function — runs the Data Ingestor pipeline
+	•	Extracted structured data is written to Firestore under a 'case' document
+	•	Research Agent Cloud Function crawls the web and appends findings to the same case
+	•	Credit Officer adds qualitative notes via the frontend portal
+	•	Recommendation Engine reads the fully assembled case from Firestore
+	•	ML model scores the case and writes the recommendation back to Firestore
+	•	CAM generator renders the Word/PDF document and uploads it to Cloud Storage
+	•	Frontend shows a live dashboard — all driven by Firestore real-time listeners
+
+
+3. Module Breakdown
+Module 1: Data Ingestor
+PURPOSE
+Parse and normalize all uploaded documents into a unified Firestore schema that downstream modules can consume.
+
+1A. PDF Parser (Unstructured Documents)
+Target files: Annual Reports, Legal Notices, Sanction Letters from other banks, Board Meeting Minutes, Rating Agency Reports.
+
+Implementation approach (no external AI API):
+	•	Use pdf-parse (Node.js) or pdfplumber (Python) to extract raw text from PDFs
+	•	For scanned PDFs: run Tesseract OCR (open-source) via tesseract.js or pytesseract
+	•	Text chunking: split extracted text into 512-token overlapping windows
+	•	Keyword extraction: use a fine-tuned NER model (see ML Models section) to tag financial entities
+	•	Pattern-based extractors for common fields: loan amounts, dates, party names, risk flags
+	•	Regex patterns for INR amounts, CIN numbers, PAN, GSTIN
+	•	Section detection: identify Balance Sheet, P&L, Notes to Accounts by heading patterns
+	•	Table extraction: use camelot-py or pdfplumber's table mode for financial tables
+
+1B. GST Return Analyser
+Target files: GSTR-3B (self-declared), GSTR-2A (auto-populated from counterparties), GSTR-1.
+
+	•	Parse GSTR JSON/XML exports from the GST portal
+	•	Cross-check GSTR-3B reported turnover vs GSTR-2A matched purchases — flag discrepancies > 15%
+	•	Detect circular trading: identify if the same GSTIN appears as both buyer and seller across periods
+	•	Revenue inflation signals: sudden turnover spikes not matched by ITC growth
+	•	Compute effective tax rate and flag if it deviates from sector norms stored in Firestore
+
+INDIA CONTEXT
+GSTR-2A is auto-drafted from supplier filings and represents actual purchases. GSTR-3B is self-declared. A large gap between them is a red flag for fake invoicing or circular trading.
+
+1C. Bank Statement Analyser
+Target files: 12-24 months of bank statements in CSV or PDF format.
+
+	•	Parse CSV exports directly; for PDF statements, use Tabula-py for table extraction
+	•	Compute: average monthly balance, inflow-outflow ratio, EMI obligations, bounce frequency
+	•	Flag: cheque returns, unsanctioned overdrafts, large round-number transactions (structuring signals)
+	•	Cross-verify bank credits against GST turnover — a major divergence is a fraud signal
+	•	Classify transaction categories using a simple keyword-based classifier (no ML needed here)
+
+1D. Structured Financial Statement Parser
+Target files: Audited Balance Sheet, P&L Statement, Cash Flow Statement (PDF or structured Excel).
+
+	•	Extract key ratios automatically: Current Ratio, Debt-to-Equity, DSCR, ICR, ROCE
+	•	Compute YoY growth for revenue, EBITDA, PAT — flag declining trends
+	•	Identify contingent liabilities, related-party transactions, qualified audit opinions
+	•	Store normalized financials in Firestore as a time-series array per company
+
+
+Module 2: Research Agent (Digital Credit Manager)
+PURPOSE
+Autonomously gather external intelligence and integrate qualitative primary observations into the credit assessment.
+
+2A. Web Crawler & Secondary Research Engine
+The Research Agent runs as a Cloud Function triggered after document ingestion. It uses Node.js with Puppeteer (headless Chrome) or Cheerio for lightweight scraping.
+
+	•	Company-level research: search news for promoter names, company name, CIN
+	•	Sources: Google News RSS, Economic Times, Business Standard, Moneycontrol
+	•	Classify headlines as: Positive / Neutral / Negative / Regulatory Risk
+	•	MCA portal scraper: fetch ROC filings, director details, charge satisfaction status
+	•	e-Courts portal: check for litigation against promoters or the company
+	•	CIBIL Commercial (if accessible): parse credit summary report for defaults, write-offs
+	•	Sector research: fetch RBI circulars, SEBI notices for the company's industry
+	•	All findings stored in Firestore with source URL, date, and sentiment score
+
+TECH NOTE
+Use Puppeteer running in a Cloud Function (or Cloud Run for longer tasks). Set a 60-second timeout. Cache results in Firestore for 24 hours to avoid re-scraping on every request.
+
+2B. Qualitative Notes Portal
+A dedicated Vue component in the frontend allows the Credit Officer to input primary due diligence observations.
+
+	•	Structured form with dropdowns + free-text fields:
+	•	Factory utilisation capacity: 0-25% / 25-50% / 50-75% / 75-100%
+	•	Management quality: Excellent / Adequate / Weak / Concerns noted
+	•	Collateral condition: Prime / Standard / Sub-standard
+	•	Free-text: key observations from site visit and management interview
+	•	Each observation maps to a pre-defined score adjustment delta stored in Firestore config
+	•	Example: factory at 40% capacity subtracts 8 points from the capacity score
+	•	Credit Officer can attach photos (stored in Cloud Storage)
+
+2C. News Sentiment Classifier
+A lightweight ML model (see ML section) classifies scraped news headlines as positive, negative, neutral, or regulatory-risk. The aggregate sentiment feeds into the final risk score.
+
+
+Module 3: Recommendation Engine
+PURPOSE
+Synthesize all inputs into a transparent, explainable credit decision: lend or reject, credit limit, and interest rate.
+
+3A. Feature Engineering Pipeline
+Before scoring, the engine assembles a feature vector from Firestore:
+
+Feature Group
+Features
+Source
+Capacity
+DSCR, ICR, EBITDA margin, revenue growth YoY
+Financial parser
+Capital
+Debt-to-equity, net worth, tangible net worth
+Financial parser
+Character
+Promoter news sentiment, litigation count, MCA defaults
+Research agent
+Collateral
+Collateral value, type (prime/std), LTV ratio
+Qualitative notes
+Conditions
+Sector headwinds, RBI circulars, macro indicators
+Research agent
+GST Quality
+GSTR-2A vs 3B gap, circular trading flags
+GST analyser
+Banking
+Avg balance, bounce rate, EMI burden ratio
+Bank statement
+Primary Obs.
+Factory utilisation, management score
+Qualitative notes
+
+3B. Credit Scoring Model
+The model produces three outputs: a credit score (0-100), a recommended loan limit, and a risk-adjusted interest rate spread.
+
+	•	Base model: Gradient Boosted Trees (XGBoost) trained on synthetic Indian corporate loan data
+	•	Calibration: Platt scaling to convert raw score to default probability
+	•	Limit formula: min(25% of tangible net worth, 3x EBITDA) adjusted by score band
+	•	Rate formula: base rate + risk premium where premium = f(score, sector, collateral type)
+	•	SHAP values computed for every prediction to generate the explainability narrative
+
+3C. CAM Document Generator
+Generates a professional Credit Appraisal Memo as a Word or PDF document.
+
+	•	Template engine: Docxtemplater (Node.js) fills a pre-designed DOCX template
+	•	Sections: Executive Summary, Five Cs Analysis, Financial Highlights, Risk Flags, Recommendation
+	•	Each section auto-populated from Firestore data and SHAP explanations
+	•	Risk flags section explicitly calls out: litigation risk, circular trading, GST discrepancies
+	•	Final document uploaded to Cloud Storage; download link sent via Firestore update
+
+EXPLAINABILITY REQUIREMENT
+The CAM must include a 'Decision Rationale' box that says, for example: 'Rejected due to high litigation risk (3 active cases found) and GSTR-2A vs 3B discrepancy of 28%, despite strong ICR of 2.4x.' SHAP drives this narrative.
+
+
+4. Custom ML Models (No External API)
+CONSTRAINT
+All ML inference must run within the Firebase project — no calls to OpenAI, Gemini, Claude, or any external AI API. Models are trained offline and served via Cloud Run or Cloud Functions.
+
+Model 1: Financial NER (Named Entity Recognition)
+Attribute
+Detail
+Purpose
+Extract financial entities from PDF text: amounts, dates, party names, account numbers, loan terms
+Architecture
+BiLSTM-CRF or fine-tuned DistilBERT (small, 66M params) for sequence labeling
+Training Data
+Synthetically generated Indian financial documents + publicly available SEBI filings
+Entity Types
+ORG, PERSON, AMOUNT_INR, DATE, GSTIN, PAN, CIN, LOAN_TERM, COLLATERAL_TYPE
+Inference
+Python Flask endpoint on Cloud Run; called by Data Ingestor Cloud Function
+Output
+JSON: {entity_type, text, start_char, end_char, confidence}
+Model Size
+~250MB (DistilBERT) or ~15MB (BiLSTM-CRF) — fits in Cloud Run easily
+Framework
+HuggingFace Transformers (offline) or spaCy with custom NER pipeline
+
+Model 2: News Sentiment Classifier
+Attribute
+Detail
+Purpose
+Classify news headlines and snippets about the borrower into sentiment categories
+Architecture
+Fine-tuned DistilBERT-multilingual (handles Hindi + English headlines) or TF-IDF + Logistic Regression for speed
+Classes
+POSITIVE / NEUTRAL / NEGATIVE / REGULATORY_RISK / LITIGATION
+Training Data
+Labelled financial news headlines from ET, BS, Moneycontrol (manually labelled or weakly supervised)
+Inference
+Batched — process all scraped headlines in one call to Cloud Run
+Output
+Per-headline label + confidence; aggregate company-level sentiment score (weighted average)
+Model Size
+~250MB (DistilBERT) or ~5MB (TF-IDF + LR) — use TF-IDF version for hackathon speed
+Fallback
+If confidence < 0.6, classify as NEUTRAL and flag for human review
+
+Model 3: Credit Scoring & Recommendation Model
+Attribute
+Detail
+Purpose
+Predict probability of default + output credit limit and rate recommendation
+Architecture
+XGBoost Classifier (default probability) + rule-based limit/rate calculator on top of score
+Training Data
+Synthetic dataset of 50,000 corporate loan cases generated from RBI published NPA data distributions
+Features
+~35 features across 5 Cs (see Feature Engineering above)
+Explainability
+SHAP TreeExplainer — produces per-feature contribution values for each prediction
+Output
+{ score: 72, default_prob: 0.12, recommendation: APPROVE, limit_cr: 15, rate_spread_bps: 180, shap_values: {...} }
+Calibration
+Isotonic regression for probability calibration post-training
+Model Size
+~10MB — can run directly in a Cloud Function (no Cloud Run needed)
+Framework
+XGBoost (Python), SHAP library, joblib for serialization
+Serving
+Model pickle file stored in Cloud Storage; loaded on Cloud Function cold start and cached
+
+Model 4: Document Table Extractor
+Attribute
+Detail
+Purpose
+Extract structured financial tables from scanned PDFs (Balance Sheet, P&L)
+Architecture
+Rule-based heuristics using pdfplumber + Camelot-py for digital PDFs; Tesseract OCR + custom table detector for scanned docs
+Table Detector
+Simple CNN trained on document images to classify: IS_TABLE vs IS_TEXT region (can use a lightweight MobileNet variant)
+Output
+Pandas DataFrame per detected table; rows and columns normalized to standard INDAS schema
+Post-processing
+Map extracted row labels to canonical names: 'Total Revenue' = 'Revenue from Operations + Other Income'
+Framework
+Camelot, pdfplumber, Tesseract, OpenCV for image preprocessing
+Model Size
+Table detector CNN: ~5MB; rest is rule-based with no ML model file
+
+
+5. Frontend — Vue 3 Application
+5.1 Tech Stack
+	•	Vue 3 with Composition API + <script setup> syntax
+	•	Vite for build tooling — fast HMR, optimized production builds
+	•	Pinia for state management (case data, user session, upload progress)
+	•	Vue Router for SPA navigation
+	•	Tailwind CSS for styling
+	•	VueFire for real-time Firestore bindings
+	•	Firebase SDK v9 (modular) for Auth, Firestore, Storage
+
+5.2 Pages & Components
+Route
+Page/Component
+Description
+/
+Dashboard
+List of all credit cases with status badges (Ingesting / Researching / Scoring / Complete)
+/case/new
+New Case Wizard
+Step-by-step upload flow: company info → upload documents → confirm
+/case/:id
+Case Detail
+Tabbed view: Financials | Research | Qualitative | Score | CAM Preview
+/case/:id/notes
+Qualitative Notes Portal
+Structured form for Credit Officer primary observations
+/case/:id/cam
+CAM Viewer
+Rendered preview of the CAM + download button
+/admin
+Admin Panel
+Manage sector benchmarks, scoring weights, user roles
+
+5.3 Key Vue Components
+	•	UploadZone.vue — drag-and-drop multi-file uploader with progress bar, connected to Cloud Storage
+	•	CaseStatusTracker.vue — real-time pipeline progress tracker (Firestore listener driven)
+	•	FinancialRatioCard.vue — displays extracted ratios with trend sparklines
+	•	ResearchFeed.vue — shows scraped news items with sentiment badges (green/red/orange chips)
+	•	ScoreGauge.vue — animated circular gauge showing the 0-100 credit score
+	•	ShapWaterfall.vue — visual SHAP waterfall chart showing feature contributions (use Chart.js or D3)
+	•	QualitativeForm.vue — structured form with conditional fields for primary observations
+	•	CAMPreview.vue — iframe or PDF.js viewer for the generated CAM document
+
+
+6. Firebase Infrastructure
+6.1 Firestore Data Schema
+All data lives under a top-level collection /cases/{caseId}:
+
+Collection / Field
+Type
+Description
+/cases/{caseId}
+Document
+Root case document
+  companyName
+string
+Borrower legal name
+  cin / gstin / pan
+string
+Identifiers
+  status
+enum
+CREATED | INGESTING | RESEARCHING | SCORING | COMPLETE | ERROR
+  createdAt / updatedAt
+timestamp
+Audit fields
+  /financials (subcollection)
+Collection
+Extracted financial ratios per year
+  /documents (subcollection)
+Collection
+Metadata for each uploaded document
+  /research (subcollection)
+Collection
+Web-scraped news items and MCA findings
+  /qualitativeNotes
+Map
+Credit Officer observations (embedded in case doc)
+  /scoreResult
+Map
+Final score, recommendation, limit, rate, SHAP values
+  camUrl
+string
+Cloud Storage URL of generated CAM document
+
+6.2 Cloud Functions
+Function Name
+Trigger
+Action
+onDocumentUpload
+Cloud Storage: object.finalize
+Detect file type, route to correct parser, update case status
+runGSTAnalyser
+Firestore: case status = INGESTING
+Cross-check GSTR-2A vs 3B, detect circular trading
+runResearchAgent
+Firestore: case status = INGESTING complete
+Launch Puppeteer crawler, classify sentiment, write to /research
+runScoringEngine
+HTTP callable (manual trigger or auto)
+Load XGBoost model, compute score, generate SHAP, update Firestore
+generateCAM
+Firestore: scoreResult written
+Render DOCX template, convert to PDF, upload to Storage, update camUrl
+scheduledCrawlerRefresh
+Cloud Scheduler: daily
+Re-crawl active cases for new news (for monitoring mode)
+
+6.3 Cloud Run — ML Model Server
+Python-based ML models that are too large for Cloud Functions (>10MB, long inference) run as a Flask app on Cloud Run within the same GCP project:
+
+	•	Container: python:3.11-slim with Flask, XGBoost, SHAP, HuggingFace Transformers, Tesseract
+	•	Endpoints: POST /ner, POST /sentiment, POST /score, POST /extract-tables
+	•	Auth: requests from Cloud Functions use GCP service account identity tokens — no API key needed
+	•	Scaling: Cloud Run min-instances=1 to avoid cold starts during demo
+	•	Model files: downloaded from Cloud Storage on container startup and cached in /tmp
+	•	Dockerfile and Cloud Run config stored in /ml directory within the monorepo
+
+COST NOTE
+Cloud Run charges per request with a generous free tier. For the hackathon, set max-instances=2 and a 10-second timeout. The XGBoost model scores in <100ms; NER in <500ms per document.
+
+
+7. Repository Structure
+Single monorepo — one Firebase project, everything co-located:
+
+Path
+Purpose
+intelli-credit/
+Project root
+  frontend/
+Vue 3 + Vite app
+    src/components/
+Reusable Vue components
+    src/views/
+Page-level Vue views (routed)
+    src/stores/
+Pinia stores
+    src/composables/
+Shared Firebase composables
+  functions/
+Node.js Cloud Functions
+    src/ingestor/
+PDF, GST, bank statement parsers
+    src/research/
+Puppeteer crawler + sentiment caller
+    src/cam/
+DOCX template engine
+  ml/
+Python ML model server (Cloud Run)
+    models/
+Serialized .pkl and .pt model files
+    app.py
+Flask endpoints: /ner /sentiment /score
+    Dockerfile
+Cloud Run container definition
+    training/
+Jupyter notebooks for model training
+  firestore.rules
+Firestore security rules
+  storage.rules
+Cloud Storage security rules
+  firebase.json
+Firebase project config
+  .firebaserc
+Project alias (staging / prod)
+
+
+8. Hackathon Build Plan
+8.1 MVP Scope (Must Have for Demo)
+	•	PDF upload and text extraction (pdfplumber, no OCR needed for clean PDFs)
+	•	GST JSON cross-check — detect gap between GSTR-3B and GSTR-2A
+	•	XGBoost scoring model with SHAP explainability — even if trained on synthetic data
+	•	Qualitative notes form that adjusts the score
+	•	Auto-generated CAM Word document with Five Cs sections
+	•	Vue 3 dashboard showing case list, score gauge, SHAP chart, CAM download
+	•	Firebase Auth (Google sign-in), Firestore, Cloud Storage, Cloud Functions all wired up
+
+8.2 Stretch Goals (If Time Permits)
+	•	Puppeteer-based news crawler with sentiment classification
+	•	Tesseract OCR for scanned PDFs
+	•	DistilBERT NER for richer entity extraction
+	•	MCA portal scraper for director and charge data
+	•	Admin panel for adjusting scoring weights
+
+8.3 Suggested Team Split (4-Person Team)
+Role
+Responsibility
+Key Deliverables
+ML Engineer
+Train XGBoost model, implement SHAP, build Flask endpoint on Cloud Run
+Scoring model, CAM narrative generator
+Backend Dev
+Cloud Functions: PDF parser, GST analyser, bank statement parser, DOCX generator
+Data Ingestor, CAM generator
+Frontend Dev
+Vue 3 dashboard, all components, Firebase integration, routing
+Full frontend, upload flow, CAM viewer
+Full-Stack / Infra
+Firebase setup, Cloud Run deployment, security rules, research agent crawler
+Infrastructure, research agent, integration glue
+
+
+9. AI IDE Prompt Document
+Use the following prompts when working with an AI coding assistant (Cursor, GitHub Copilot, etc.) to guide its reasoning. These are structured as system-level context injections.
+
+9.1 Global Context Prompt
+You are building Intelli-Credit: an AI-powered corporate credit appraisal system for Indian banks.
+Stack: Vue 3 (Composition API, Pinia, Vue Router, Tailwind) + Firebase (Hosting, Firestore, Cloud Functions, Cloud Storage, Auth) + Python Cloud Run for ML models.
+HARD CONSTRAINT: Do NOT use any external AI API (no OpenAI, Gemini, Claude, Cohere, etc.). All ML must be custom-built using XGBoost, spaCy, HuggingFace Transformers (offline), or scikit-learn.
+India-specific context: understand GSTR-2A vs GSTR-3B, CIN, GSTIN, PAN, MCA filings, CIBIL Commercial scores, SARFAESI act, RBI prudential norms, IndAS accounting standards.
+Explainability is mandatory: every model output must include a plain-English reason string. Use SHAP for the scoring model.
+
+9.2 Module-Specific Prompts
+Data Ingestor Prompt
+Build a Node.js Cloud Function triggered on Cloud Storage file upload. Route files by extension:
+  - .pdf → call Python /extract endpoint on Cloud Run (pdfplumber + Tesseract if scanned)
+  - .json / .xml → GST analyser (parse GSTR-3B and GSTR-2A, compute gap, detect circular trading)
+  - .csv → bank statement parser (compute avg balance, EMI burden, bounce frequency)
+Write extracted data to Firestore under /cases/{caseId}/financials and update case status field.
+
+Scoring Model Prompt
+Build a Python XGBoost classifier for corporate credit default prediction.
+Input: 35-feature vector covering the Five Cs (Capacity, Capital, Character, Collateral, Conditions) + GST quality + banking behaviour + primary qualitative observations.
+Output: { score (0-100), default_probability, recommendation (APPROVE/REJECT/REFER), credit_limit_cr, rate_spread_bps, shap_values }.
+Use SHAP TreeExplainer. Generate a plain-English reason string: list the top 3 positive and top 3 negative SHAP contributors.
+Expose as POST /score on Flask. Accept JSON feature vector. Return full result JSON.
+
+Vue Frontend Prompt
+Build a Vue 3 SPA with Pinia and VueFire. All state comes from Firestore real-time listeners.
+Key components: UploadZone (multi-file drag-drop to Cloud Storage), CaseStatusTracker (real-time pipeline steps), ScoreGauge (animated 0-100 gauge), ShapWaterfall (SHAP bar chart using Chart.js), QualitativeForm (structured Credit Officer notes form), CAMPreview (PDF viewer).
+Use Tailwind CSS only. No component library dependencies unless explicitly approved. Keep bundle size small for Firebase Hosting.
+
+10. Evaluation Criteria Checklist
+Criterion
+How We Address It
+Status
+Extraction Accuracy
+pdfplumber + Tesseract OCR + regex for Indian-format docs. Tested on sample GSTR and annual report PDFs.
+Build in MVP
+Research Depth
+Puppeteer crawler targeting ET, BS, MCA, e-Courts. Sector RBI circular fetcher.
+Build as stretch
+Explainability
+SHAP waterfall chart in UI + plain-English reason string in CAM. Every decision auditable.
+Core — MVP
+Indian Context
+GSTR-2A vs 3B gap detection, GSTIN/CIN/PAN extraction, CIBIL Commercial parsing, SARFAESI collateral types.
+Built into parsers
+CAM Quality
+Structured DOCX with Five Cs sections, ratio tables, risk flags, explicit decision rationale.
+Cloud Function
+
+
+— End of Intelli-Credit Blueprint —
