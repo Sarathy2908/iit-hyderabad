@@ -17,18 +17,16 @@ const router = createRouter({
       path: '/case/:id',
       name: 'case-detail',
       component: () => import('../views/CaseDetail.vue'),
-      children: [
-        {
-          path: 'notes',
-          name: 'case-notes',
-          component: () => import('../views/QualitativeNotes.vue'),
-        },
-        {
-          path: 'cam',
-          name: 'case-cam',
-          component: () => import('../views/CAMViewer.vue'),
-        }
-      ]
+    },
+    {
+      path: '/case/:id/notes',
+      name: 'case-notes',
+      component: () => import('../views/QualitativeNotes.vue'),
+    },
+    {
+      path: '/case/:id/cam',
+      name: 'case-cam',
+      component: () => import('../views/CAMViewer.vue'),
     },
     {
       path: '/admin',

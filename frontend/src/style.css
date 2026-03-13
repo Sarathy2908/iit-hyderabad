@@ -1,6 +1,19 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--color-violet-500);
+  --color-primary-hover: var(--color-violet-600);
+  --color-accent: var(--color-emerald-400);
+  
+  --color-success: var(--color-emerald-500);
+  --color-success-muted: var(--color-success-muted);
+  --color-warning: var(--color-amber-500);
+  --color-warning-muted: var(--color-warning-muted);
+  --color-danger: var(--color-red-500);
+  --color-danger-muted: var(--color-danger-muted);
+  --color-info: var(--color-indigo-500);
+  --color-info-muted: var(--color-info-muted);
+}
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -8,19 +21,76 @@
   font-weight: 400;
 
   color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #0f172a;
+  
+  /* Core Brand Colors */
+  --bg-app: #f8fafc;
+  --card-bg: #ffffff;
+  --border-main: #e2e8f0;
+  
+  /* Semantic Status Colors (Light) */
+  --color-success:        #10b981;  /* emerald-500 */
+  --color-success-muted:  #d1fae5;  /* emerald-100 */
+  --color-warning:        #f59e0b;  /* amber-500 */
+  --color-warning-muted:  #fef3c7;  /* amber-100 */
+  --color-danger:         #ef4444;  /* red-500 */
+  --color-danger-muted:   #fee2e2;  /* red-100 */
+  --color-info:           #6366f1;  /* indigo-500 */
+  --color-info-muted:     #e0e7ff;  /* indigo-100 */
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Surface Layers */
+  --surface-1:            #f1f5f9;  /* slate-100 */
+  --surface-2:            #e2e8f0;  /* slate-200 */
+  --surface-raised:       #ffffff;
+
+  /* Typography Scale */
+  --text-main:            #475569;  /* slate-600 */
+  --text-muted:           #94a3b8;  /* slate-400 */
+  --text-heading:         #0f172a;  /* slate-900 */
+  --text-label:           #475569;  /* slate-600 */
+  --text-placeholder:     #94a3b8;  /* slate-400 */
+  --text-inverse:         #f8fafc;
+
+  /* Interactive States */
+  --color-focus-ring:     #8b5cf680;
+  --color-selected-bg:    #ede9fe;
+  --color-hover-bg:       #f8fafc;
+}
+
+.dark {
+  /* Core Brand Colors (Dark) */
+  --bg-app: #020617;
+  --card-bg: #0f172a;
+  --border-main: #1e293b;
+
+  /* Semantic Status Colors (Dark) */
+  --color-success-muted:  #064e3b;
+  --color-warning-muted:  #78350f;
+  --color-danger-muted:   #7f1d1d;
+  --color-info-muted:     #1e1b4b;
+
+  /* Surface Layers (Dark) */
+  --surface-1:            #0f172a;
+  --surface-2:            #1e293b;
+  --surface-raised:       #1e293b;
+
+  /* Typography Scale (Dark) */
+  --text-main:            #94a3b8;
+  --text-muted:           #475569;
+  --text-heading:         #f1f5f9;
+  --text-label:           #94a3b8;
+  --text-placeholder:     #475569;
+  --text-inverse:         #0f172a;
+
+  /* Interactive States (Dark) */
+  --color-selected-bg:    #2e1065;
+  --color-hover-bg:       #1e293b;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-content: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }

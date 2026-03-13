@@ -1,0 +1,29 @@
+
+> frontend@0.0.0 build
+> vue-tsc -b && vite build
+
+vite v7.3.1 building client environment for production...
+transforming...
+✓ 67 modules transformed.
+✗ Build failed in 992ms
+error during build:
+[vite:vue] [vue/compiler-sfc] Unexpected token (20:18)
+
+/Users/sarathyv/iit-hyderabad/frontend/src/components/ResearchFeed.vue
+18 |  
+19 |  defineProps<{
+20 |    items: NewsItem[]
+   |                    ^
+21 |  >()
+22 |  
+file: /Users/sarathyv/iit-hyderabad/frontend/src/components/ResearchFeed.vue:20:18
+    at constructor (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:365:19)
+    at TypeScriptParserMixin.raise (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:6599:19)
+    at TypeScriptParserMixin.unexpected (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:6619:16)
+    at TypeScriptParserMixin.parseExprAtom (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:11442:22)
+    at TypeScriptParserMixin.parseExprSubscripts (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:11081:23)
+    at TypeScriptParserMixin.parseUpdate (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:11066:21)
+    at TypeScriptParserMixin.parseMaybeUnary (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:11046:23)
+    at TypeScriptParserMixin.parseMaybeUnary (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:9837:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:10899:61)
+    at TypeScriptParserMixin.parseExprOps (/Users/sarathyv/iit-hyderabad/frontend/node_modules/@babel/parser/lib/index.js:10904:23)
